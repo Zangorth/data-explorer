@@ -6,8 +6,94 @@ import numpy as np
 import os
 
 st.set_page_config(page_title='Data Explorer', layout='wide')
-
 sidebar = st.sidebar
+
+def get_numeric(plot=True):
+    size = np.histogram(panda.loc[panda[feature].notnull(), feature], bins=bins)
+    height = size[0]
+    original_axis = size[1]
+    axis = [(original_axis[i] + original_axis[i+1])/2 for i in range(len(original_axis)-1)]
+    size = pd.DataFrame({'cuts': axis, 'size': height})
+
+    if plot:
+        fig, hist = plt.subplots(figsize=(16, 9))
+        hist.bar(size['cuts'], size['size'], alpha=alpha, color='grey',
+                  width=((size.cuts.min() + size.cuts.max())/len(size))*width)
+        hist.set(yticklabels=[], ylabel=None)
+        hist.tick_params(left=False)
+
+    if target != 'None':
+        panda['grouping'] = np.nan
+        for i in range(len(original_axis)-1):
+            panda.loc[panda[feature] >= original_axis[i], 'grouping'] = axis[i]
+
+        means = panda.groupby('grouping')[target].mean().reset_index()
+
+        se = panda.groupby(['grouping'])[target].sem().reset_index()
+        se.columns = ['grouping', 'error']
+        se['error'] = 2 * se['error']
+
+        means = means.merge(se, on=['grouping'])
+
+        if plot:
+            ax = hist.twinx()
+            ax.plot('grouping', target, data=means, color='#148F77')
+            ax.errorbar('grouping', target, yerr='error', data=means, ls='', label='', color='black')
+            hist.set(yticklabels=[], ylabel=None)
+            hist.tick_params(left=False)
+            ax.yaxis.tick_left()
+            ax.set_ylabel(f'Average of {target}')
+            ax.yaxis.set_label_position('left')
+
+            title = f'Distribution of {feature}' if target == 'None' else f'Relationship between {target} and {feature}'
+            plt.title(title)
+
+            return fig
+
+        else:
+            return means
+
+def get_category(plot=True):
+    size = panda.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
+    panda['grouping'] = np.where(panda[feature].isin(size[feature]), panda[feature].astype(str).str.replace(' ', '').str.lower(), 'other')
+
+    size = panda.groupby('grouping').size().reset_index()
+    size.columns = ['grouping', 'size']
+    size['scaled'] = 0.8*((size['size'] - size['size'].min())/(size['size'].max() - size['size'].min())) + 0.2
+
+    if target == 'None' and plot:
+        fig, ax = plt.subplots(figsize=(16, 9))
+        ax.bar(size['grouping'], size['size']/size['size'].sum(), color='#148F77')
+        ax.set_xticks(np.arange(size['grouping'].nunique()))
+        ax.set_xticklabels(size['grouping'], rotation=90)
+        plt.title(f'Distribution of {feature}')
+        plt.ylabel('Percent of Accounts')
+
+    else:
+        means = panda.groupby('grouping')[target].mean().reset_index()
+        se = panda.groupby(['grouping'])[target].sem().reset_index()
+        se.columns = ['grouping', 'error']
+        se['error'] = 2 * se['error']
+
+        means = means.merge(se, on=['grouping'])
+        means = means.merge(size, on='grouping')
+
+        if plot:
+            fig, ax = plt.subplots(figsize=(16, 9))
+            for i in range(len(means)):
+                ax.bar(means['grouping'][i], means[target][i], alpha=means['scaled'][i], color='#148F77')
+
+            ax.errorbar('grouping', target, 'error', data=means, ls='', color='black')
+            ax.set_xticks(np.arange(size['grouping'].nunique()))
+            ax.set_xticklabels(size['grouping'], rotation=90)
+            plt.title(f'Relationship between {target} and {feature}')
+            plt.ylabel(f'Average of {target}')
+
+            return fig
+
+        else:
+            return means
+
 
 if 'panda' not in st.session_state:
     sidebar.header('Data Read')
@@ -65,43 +151,7 @@ else:
 
             st.form_submit_button('Submit')
 
-        size = np.histogram(panda.loc[panda[feature].notnull(), feature], bins=bins)
-        height = size[0]
-        original_axis = size[1]
-        axis = [(original_axis[i] + original_axis[i+1])/2 for i in range(len(original_axis)-1)]
-        size = pd.DataFrame({'cuts': axis, 'size': height})
-
-
-        fig, hist = plt.subplots(figsize=(16, 9))
-        hist.bar(size['cuts'], size['size'], alpha=alpha, color='grey',
-                  width=((size.cuts.min() + size.cuts.max())/len(size))*width)
-        hist.set(yticklabels=[], ylabel=None)
-        hist.tick_params(left=False)
-
-        if target != 'None':
-            panda['grouping'] = np.nan
-            for i in range(len(original_axis)-1):
-                panda.loc[panda[feature] >= original_axis[i], 'grouping'] = axis[i]
-
-            means = panda.groupby('grouping')[target].mean().reset_index()
-
-            se = panda.groupby(['grouping'])[target].sem().reset_index()
-            se.columns = ['grouping', 'error']
-            se['error'] = 2 * se['error']
-
-            means = means.merge(se, on=['grouping'])
-
-            ax = hist.twinx()
-            ax.plot('grouping', target, data=means, color='#148F77')
-            ax.errorbar('grouping', target, yerr='error', data=means, ls='', label='', color='black')
-            hist.set(yticklabels=[], ylabel=None)
-            hist.tick_params(left=False)
-            ax.yaxis.tick_left()
-            ax.set_ylabel(f'Average of {target}')
-            ax.yaxis.set_label_position('left')
-
-        title = f'Distribution of {feature}' if target == 'None' else f'Relationship between {target} and {feature}'
-        plt.title(title)
+        fig = get_numeric()
 
         st.pyplot(fig)
 
@@ -114,39 +164,7 @@ else:
 
             st.form_submit_button('Submit')
 
-        size = panda.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
-        panda['grouping'] = np.where(panda[feature].isin(size[feature]), panda[feature].astype(str).str.replace(' ', '').str.lower(), 'other')
-
-        size = panda.groupby('grouping').size().reset_index()
-        size.columns = ['grouping', 'size']
-        size['scaled'] = 0.8*((size['size'] - size['size'].min())/(size['size'].max() - size['size'].min())) + 0.2
-
-        if target == 'None':
-            fig, ax = plt.subplots(figsize=(16, 9))
-            ax.bar(size['grouping'], size['size']/size['size'].sum(), color='#148F77')
-            ax.set_xticks(np.arange(size['grouping'].nunique()))
-            ax.set_xticklabels(size['grouping'], rotation=90)
-            plt.title(f'Distribution of {feature}')
-            plt.ylabel('Percent of Accounts')
-
-        else:
-            means = panda.groupby('grouping')[target].mean().reset_index()
-            se = panda.groupby(['grouping'])[target].sem().reset_index()
-            se.columns = ['grouping', 'error']
-            se['error'] = 2 * se['error']
-
-            means = means.merge(se, on=['grouping'])
-            means = means.merge(size, on='grouping')
-
-            fig, ax = plt.subplots(figsize=(16, 9))
-            for i in range(len(means)):
-                ax.bar(means['grouping'][i], means[target][i], alpha=means['scaled'][i], color='#148F77')
-
-            ax.errorbar('grouping', target, 'error', data=means, ls='', color='black')
-            ax.set_xticks(np.arange(size['grouping'].nunique()))
-            ax.set_xticklabels(size['grouping'], rotation=90)
-            plt.title(f'Relationship between {target} and {feature}')
-            plt.ylabel(f'Average of {target}')
+        fig = get_category()
 
         st.pyplot(fig)
 
