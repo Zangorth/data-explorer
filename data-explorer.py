@@ -6,9 +6,10 @@ import numpy as np
 import os
 
 st.set_page_config(page_title='Data Explorer', layout='wide')
+st.set_option('deprecation.showPyplotGlobalUse', False)
 sidebar = st.sidebar
 
-def get_numeric(plot=True):
+def get_numeric(feature, plot=True, fs=(16, 9), missing=False):
     size = np.histogram(panda.loc[panda[feature].notnull(), feature], bins=bins)
     height = size[0]
     original_axis = size[1]
@@ -16,7 +17,7 @@ def get_numeric(plot=True):
     size = pd.DataFrame({'cuts': axis, 'size': height})
 
     if plot:
-        fig, hist = plt.subplots(figsize=(16, 9))
+        fig, hist = plt.subplots(figsize=fs)
         hist.bar(size['cuts'], size['size'], alpha=alpha, color='grey',
                   width=((size.cuts.min() + size.cuts.max())/len(size))*width)
         hist.set(yticklabels=[], ylabel=None)
@@ -45,7 +46,9 @@ def get_numeric(plot=True):
             ax.set_ylabel(f'Average of {target}')
             ax.yaxis.set_label_position('left')
 
-            title = f'Distribution of {feature}' if target == 'None' else f'Relationship between {target} and {feature}'
+            missing = f'\nMissingness: {round((panda[feature].isnull().sum()/len(panda))*100, 1)}%' if missing else ''
+
+            title = f'Distribution of {feature}{missing}' if target == 'None' else f'Relationship between {target} and {feature}{missing}'
             plt.title(title)
 
             return fig
@@ -53,7 +56,8 @@ def get_numeric(plot=True):
         else:
             return means
 
-def get_category(plot=True):
+def get_category(feature, plot=True, fs=(16, 9), missing=False):
+    missing = f'\nMissingness: {round((panda[feature].isnull().sum()/len(panda))*100, 1)}%' if missing else ''
     size = panda.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
     panda['grouping'] = np.where(panda[feature].isin(size[feature]), panda[feature].astype(str).str.replace(' ', '').str.lower(), 'other')
 
@@ -62,12 +66,14 @@ def get_category(plot=True):
     size['scaled'] = 0.8*((size['size'] - size['size'].min())/(size['size'].max() - size['size'].min())) + 0.2
 
     if target == 'None' and plot:
-        fig, ax = plt.subplots(figsize=(16, 9))
+        fig, ax = plt.subplots(figsize=fs)
         ax.bar(size['grouping'], size['size']/size['size'].sum(), color='#148F77')
         ax.set_xticks(np.arange(size['grouping'].nunique()))
         ax.set_xticklabels(size['grouping'], rotation=90)
-        plt.title(f'Distribution of {feature}')
+        plt.title(f'Distribution of {feature}{missing}')
         plt.ylabel('Percent of Accounts')
+
+        return fig
 
     else:
         means = panda.groupby('grouping')[target].mean().reset_index()
@@ -79,14 +85,14 @@ def get_category(plot=True):
         means = means.merge(size, on='grouping')
 
         if plot:
-            fig, ax = plt.subplots(figsize=(16, 9))
+            fig, ax = plt.subplots(figsize=fs)
             for i in range(len(means)):
                 ax.bar(means['grouping'][i], means[target][i], alpha=means['scaled'][i], color='#148F77')
 
             ax.errorbar('grouping', target, 'error', data=means, ls='', color='black')
             ax.set_xticks(np.arange(size['grouping'].nunique()))
             ax.set_xticklabels(size['grouping'], rotation=90)
-            plt.title(f'Relationship between {target} and {feature}')
+            plt.title(f'Relationship between {target} and {feature}{missing}')
             plt.ylabel(f'Average of {target}')
 
             return fig
@@ -151,7 +157,7 @@ else:
 
             st.form_submit_button('Submit')
 
-        fig = get_numeric()
+        fig = get_numeric(feature)
 
         st.pyplot(fig)
 
@@ -164,31 +170,52 @@ else:
 
             st.form_submit_button('Submit')
 
-        fig = get_category()
+        fig = get_category(feature)
 
         st.pyplot(fig)
 
     ppflag = False
     if sidebar.button('Download as Powerpoint'):
-        prs = Presentation()
-        prs.slide_width = util.Inches(16)
-        prs.slide_height = util.Inches(9)
+        panda = panda.drop(['grouping'], axis=1)
 
-        lyt = prs.slide_layouts[0]
-        slide = prs.slides.add_slide(lyt)
-        title = slide.shapes.title
-        subtitle = slide.placeholders[1]
+        with st.spinner('Generating PowerPoint'):
+            prs = Presentation()
+            prs.slide_width = util.Inches(16)
+            prs.slide_height = util.Inches(9)
 
-        title.text = 'Insert Title Here'
-        subtitle.text = 'Insert Subtitle Here'
+            lyt = prs.slide_layouts[0]
+            slide = prs.slides.add_slide(lyt)
+            title = slide.shapes.title
+            subtitle = slide.placeholders[1]
 
-        prs.save('Data-Exploration.pptx')
+            title.text = 'Insert Title Here'
+            subtitle.text = 'Insert Subtitle Here'
+
+            effect_sizes = pd.DataFrame({'feature': panda.columns, 'size': np.nan})
+            for iv in panda.columns:
+                means = get_category(iv, plot=False) if pd.api.types.is_object_dtype(panda[iv]) or panda[iv].nunique() == 2 else get_numeric(iv, plot=False)
+                effect_sizes.loc[effect_sizes['feature'] == iv, 'size'] = np.abs(means[target].max() - means[target].min())
+
+            effect_sizes = effect_sizes.sort_values('size', ascending=False).reset_index(drop=True)
+
+            for iv in effect_sizes['feature']:
+                fig = (get_category(iv, fs=(14, 7.875), missing=True) if pd.api.types.is_object_dtype(panda[iv]) or panda[iv].nunique() == 2
+                        else get_numeric(iv, fs=(14, 7.875), missing=True))
+                plt.savefig('data-explorer-figure.png', bbox_inches='tight')
+
+                slide = prs.slides.add_slide(prs.slide_layouts[6])
+                img=slide.shapes.add_picture('data-explorer-figure.png', left=util.Inches(2), top=util.Inches(1))
+
+            os.remove('data-explorer-figure.png')
+            prs.save('Data-Exploration.pptx')
 
         ppflag = True
 
     if ppflag:
-        st.write(os.getcwd())
+        st.write(f'Powerpoint Saved At: {os.getcwd()}')
 
+        for iv in effect_sizes['feature']:
+            st.write(f'{iv}: {effect_sizes.loc[effect_sizes["feature"] == iv, "size"].item()}')
 
 
 
