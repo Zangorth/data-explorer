@@ -1,7 +1,11 @@
-from sklearn.linear_model import LinearRegression, LogisticRegression
+###########
+# Imports #
+###########
 from sklearn.preprocessing import MinMaxScaler as mms
+from sklearn.linear_model import LinearRegression
 from matplotlib import pyplot as plt
 from pptx import Presentation, util
+from time import sleep
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,7 +15,10 @@ st.set_page_config(page_title='Data Explorer', layout='wide')
 st.set_option('deprecation.showPyplotGlobalUse', False)
 sidebar = st.sidebar
 
-def get_numeric(feature, plot=True, fs=(16, 9), missing=False):
+#############
+# Functions #
+#############
+def get_numeric(feature, panda, plot=True, fs=(16, 9), missing=False):
     size = np.histogram(panda.loc[panda[feature].notnull(), feature], bins=bins)
     height = size[0]
     original_axis = size[1]
@@ -20,8 +27,8 @@ def get_numeric(feature, plot=True, fs=(16, 9), missing=False):
 
     if plot:
         fig, hist = plt.subplots(figsize=fs)
-        hist.bar(size['cuts'], size['size'], alpha=alpha, color='grey',
-                  width=((size.cuts.min() + size.cuts.max())/len(size))*width)
+        hist.bar(size['cuts'], size['size'], alpha=(0.4 if target != 'None' else 0.8), color='grey',
+                  width=((size.cuts.min() + size.cuts.max())/len(size))*0.2)
         hist.set(yticklabels=[], ylabel=None)
         hist.tick_params(left=False)
 
@@ -29,7 +36,7 @@ def get_numeric(feature, plot=True, fs=(16, 9), missing=False):
         panda['grouping'] = np.nan
         groups = 5
 
-        while panda['grouping'].nunique() < 2:
+        while panda['grouping'].nunique() < 2 and groups <= 50:
             groups += 5
             panda['grouping'] = pd.qcut(panda[feature], groups, duplicates='drop')
 
@@ -63,7 +70,7 @@ def get_numeric(feature, plot=True, fs=(16, 9), missing=False):
         else:
             return means
 
-def get_category(feature, plot=True, fs=(16, 9), missing=False):
+def get_category(feature, panda, plot=True, fs=(16, 9), missing=False):
     missing = f'\nMissingness: {round((panda[feature].isnull().sum()/len(panda))*100, 1)}%' if missing else ''
     size = panda.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
     panda['grouping'] = np.where(panda[feature].isin(size[feature]), panda[feature].astype(str).str.replace(' ', '').str.lower(), 'other')
@@ -107,7 +114,9 @@ def get_category(feature, plot=True, fs=(16, 9), missing=False):
         else:
             return means
 
-
+#############
+# Load Data #
+#############
 if 'panda' not in st.session_state:
     sidebar.header('Data Read')
 
@@ -120,8 +129,11 @@ if 'panda' not in st.session_state:
 else:
     panda = st.session_state['panda'].copy()
 
+    ###########
+    # Options #
+    ###########
+    # Global Options
     sidebar.subheader('Global Options')
-
     with sidebar.form('global_opts'):
         feature = st.selectbox('Features', panda.columns)
         target = st.selectbox('Target', ['None'] + list(panda.columns))
@@ -132,7 +144,9 @@ else:
 
     feature_type = 'categorical' if pd.api.types.is_object_dtype(panda[feature]) else 'categorical' if panda[feature].nunique() == 2 else 'numeric' if pd.api.types.is_numeric_dtype(panda[feature]) else None
 
+    # Partition Options
     if partition != 'None':
+        sidebar.subheader('Partition Options')
         filter_type = 'categorical' if pd.api.types.is_object_dtype(panda[partition]) else 'categorical' if panda[partition].nunique() == 2 else 'numeric'
 
         with sidebar.form('filter_opts'):
@@ -149,6 +163,7 @@ else:
         if filter_type == 'categorical' and filters != ['All']:
             panda = panda.loc[panda[partition].astype(str).isin(filters)].copy()
 
+    # Graph Options
     sidebar.subheader('Graph Options')
     with sidebar.form('numeric_opts'):
         if feature_type == 'numeric':
@@ -157,27 +172,18 @@ else:
             bins = st.number_input('Top N Categories', min_value=2, max_value=panda[feature].nunique(),
                                    value=panda[feature].nunique() if panda[feature].nunique() <= 12 else 10)
 
-        alpha = 0.4 if target != 'None' else 0.8
-        width = 0.2
-
         st.form_submit_button('Submit')
 
-    st.metric('Missingness', panda[feature].isnull().sum()/len(panda))
+    # Powerpoint Options
+    sidebar.subheader('PowerPoint Options')
+    with sidebar.form('powerpoint_opts'):
+        exclude_features = st.multiselect('Features to Exclude', panda.columns)
+        dl = st.form_submit_button('Download PowerPoint')
 
-    if feature_type == 'numeric':
-        if outliers:
-            panda = panda.loc[(panda[feature] >= panda[feature].mean() - 2*panda[feature].std()) &
-                              (panda[feature] <= panda[feature].mean() + 2*panda[feature].std())]
-
-        fig = get_numeric(feature)
-
-    elif feature_type == 'categorical':
-        fig = get_category(feature)
-
-    st.pyplot(fig)
-
-    ppflag = False
-    if sidebar.button('Download as Powerpoint'):
+    #######################
+    # PowerPoint Download #
+    #######################
+    if dl:
         with st.spinner('Generating PowerPoint'):
             prs = Presentation()
             prs.slide_width = util.Inches(16)
@@ -192,67 +198,96 @@ else:
             subtitle.text = 'Insert Subtitle Here'
 
         with st.spinner('Sorting Effect Sizes'):
-            effect_sizes = pd.DataFrame({'feature': panda.columns, 'size': np.nan})
-            for iv in [col for col in panda.columns if col != 'grouping']:
+            effect_sizes = pd.DataFrame({'feature': [col for col in panda.columns if col not in exclude_features], 'size': np.nan})
+            for feature in effect_sizes['feature']:
                 df = panda.copy()
 
-                if pd.api.types.is_object_dtype(df[iv]) or df[iv].nunique() == 2:
-                    size = df.groupby(iv).size().sort_values(ascending=False).reset_index()[0:bins]
-                    df['grouping'] = np.where(df[iv].isin(size[iv]), df[iv].astype(str).str.replace(' ', '').str.lower(), 'other')
+                if pd.api.types.is_object_dtype(df[feature]) or df[feature].nunique() == 2:
+                    size = df.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
+                    df['grouping'] = np.where(df[feature].isin(size[feature]),
+                                              df[feature].astype(str).str.replace(' ', '').str.lower(), 'other')
 
                     y = df[target].values.ravel()
                     x = pd.get_dummies(df['grouping'])
 
                     try:
-                        #model = Lasso(alpha=0.1, fit_intercept=False)
                         model = LinearRegression(fit_intercept=False)
                         model.fit(x, y)
 
-                        effect_sizes.loc[effect_sizes['feature'] == iv, 'size'] = np.abs(max(model.coef_) - min(model.coef_))
+                        effect_sizes.loc[effect_sizes['feature'] == feature, 'size'] = np.abs(max(model.coef_) - min(model.coef_))
 
                     except ValueError:
-                        effect_sizes.loc[effect_sizes['feature'] == iv, 'size'] = -666
+                        effect_sizes.loc[effect_sizes['feature'] == feature, 'size'] = -666
 
                 else:
                     if outliers:
-                        df = df.loc[(df[iv] >= df[iv].mean() - 2*df[iv].std()) &
-                                    (df[iv] <= df[iv].mean() + 2*df[iv].std())]
+                        df = df.loc[(df[feature] >= df[feature].mean() - 2*df[feature].std()) &
+                                    (df[feature] <= df[feature].mean() + 2*df[feature].std())]
 
                     y = df[target].values.ravel()
-                    x = df[iv].fillna(df[iv].mean()).values.reshape(-1, 1)
+                    x = df[feature].fillna(df[feature].mean()).values.reshape(-1, 1)
 
                     scaler = mms()
                     x = scaler.fit_transform(x)
 
                     try:
-                        #model = Lasso(alpha=0.1)
                         model = LinearRegression()
                         model.fit(x, y)
 
-                        effect_sizes.loc[effect_sizes['feature'] == iv, 'size'] = np.abs(model.coef_[0])
+                        effect_sizes.loc[effect_sizes['feature'] == feature, 'size'] = np.abs(model.coef_[0])
 
                     except ValueError:
-                        effect_sizes.loc[effect_sizes['feature'] == iv, 'size'] = -666
+                        effect_sizes.loc[effect_sizes['feature'] == feature, 'size'] = -666
 
             effect_sizes = effect_sizes.sort_values('size', ascending=False).reset_index(drop=True)
 
-        for iv in effect_sizes['feature']:
-            with st.spinner(f'Plotting {iv}'):
-                fig = (get_category(iv, fs=(14, 7.875), missing=True) if pd.api.types.is_object_dtype(df[iv]) or df[iv].nunique() == 2
-                        else get_numeric(iv, fs=(14, 7.875), missing=True))
+        i = 0
+        for feature in effect_sizes['feature']:
+            i += 1
+            df = panda.copy()
+
+            with st.spinner(f'Plotting {feature} ({i}/{len(effect_sizes)})'):
+                if pd.api.types.is_object_dtype(df[feature]) or df[feature].nunique() == 2:
+                    fig = get_category(feature, df, fs=(14, 7.875), missing=True)
+
+                else:
+                    if outliers:
+                        with st.spinner('Removing Outliers'):
+                            df = df.loc[(df[feature] >= df[feature].mean() - 2*df[feature].std()) &
+                                        (df[feature] <= df[feature].mean() + 2*df[feature].std())]
+
+                    with st.spinner('Generating Fig'):
+                        fig = get_numeric(feature, df, fs=(14, 7.875), missing=True)
+
                 plt.savefig('data-explorer-figure.png', bbox_inches='tight')
 
-                slide = prs.slides.add_slide(prs.slide_layouts[6])
-                img=slide.shapes.add_picture('data-explorer-figure.png', left=util.Inches(2), top=util.Inches(1))
+                with st.spinner('Adding Fig to PP'):
+                    slide = prs.slides.add_slide(prs.slide_layouts[6])
+                    img=slide.shapes.add_picture('data-explorer-figure.png', left=util.Inches(2), top=util.Inches(1))
+                    os.remove('data-explorer-figure.png')
 
         with st.spinner('Saving PowerPoint'):
-            os.remove('data-explorer-figure.png')
             prs.save('Data-Exploration.pptx')
 
-        ppflag = True
-
-    if ppflag:
         st.write(f'Powerpoint Saved At: {os.getcwd()}')
+
+    #################
+    # Display Plots #
+    #################
+    else:
+        st.metric('Missingness', panda[feature].isnull().sum()/len(panda))
+
+        if feature_type == 'numeric':
+            if outliers:
+                panda = panda.loc[(panda[feature] >= panda[feature].mean() - 2*panda[feature].std()) &
+                                  (panda[feature] <= panda[feature].mean() + 2*panda[feature].std())]
+
+            fig = get_numeric(feature, panda)
+
+        elif feature_type == 'categorical':
+            fig = get_category(feature, panda)
+
+        st.pyplot(fig)
 
 
 
