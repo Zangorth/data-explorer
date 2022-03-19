@@ -139,14 +139,15 @@ else:
     # Options #
     ###########
     # Global Options
-    sidebar.subheader('Global Options')
-    with sidebar.form('global_opts'):
-        feature = st.selectbox('Features', panda.columns)
-        target = st.selectbox('Target', ['None'] + list(panda.columns))
-        partition = st.selectbox('Filter', ['None'] + list(panda.columns))
-        outliers = st.checkbox('Outlier Removal')
-
-        st.form_submit_button('Submit')
+    
+    with sidebar.expander('Global Options', expanded=True):
+        with st.form('global_opts'):
+            feature = st.selectbox('Features', panda.columns)
+            target = st.selectbox('Target', ['None'] + list(panda.columns))
+            partition = st.selectbox('Filter', ['None'] + list(panda.columns))
+            outliers = st.checkbox('Outlier Removal')
+    
+            st.form_submit_button('Submit')
         
     target_type = (None if target == 'None' else 
                    'categorical' if pd.api.types.is_object_dtype(panda[target]) else 'categorical' if panda[target].nunique() == 2 else 
@@ -159,18 +160,18 @@ else:
 
     # Partition Options
     if partition != 'None':
-        sidebar.subheader('Filter Options')
         filter_type = 'categorical' if pd.api.types.is_object_dtype(panda[partition]) else 'numeric'
-
-        with sidebar.form('filter_opts'):
-            if filter_type == 'categorical':
-                filters = st.multiselect('Categories', list(panda[partition].unique()), list(panda[partition].unique()))
-
-            else:
-                min_value = st.number_input('Min', min_value=panda[partition].min(), max_value=panda[partition].max(), value=panda[partition].min())
-                max_value = st.number_input('Max', min_value=panda[partition].min(), max_value=panda[partition].max(), value=panda[partition].max())
-
-            st.form_submit_button('Submit')
+        
+        with sidebar.expander('Filter Options', expanded=True):
+            with st.form('filter_opts'):
+                if filter_type == 'categorical':
+                    filters = st.multiselect('Categories', list(panda[partition].unique()), list(panda[partition].unique()))
+    
+                else:
+                    min_value = st.number_input('Min', min_value=panda[partition].min(), max_value=panda[partition].max(), value=panda[partition].min())
+                    max_value = st.number_input('Max', min_value=panda[partition].min(), max_value=panda[partition].max(), value=panda[partition].max())
+    
+                st.form_submit_button('Submit')
 
         if filter_type == 'categorical':
             panda = panda.loc[panda[partition].isin(filters)].copy()
@@ -180,21 +181,21 @@ else:
               
 
     # Graph Options
-    sidebar.subheader('Graph Options')
-    with sidebar.form('numeric_opts'):
-        if feature_type == 'numeric':
-            bins = st.slider('Number of Bins', 1, min(100, panda[feature].nunique()), min(100, panda[feature].nunique()))
-        else:
-            bins = st.number_input('Top N Categories', min_value=2, max_value=panda[feature].nunique(),
-                                   value=panda[feature].nunique() if panda[feature].nunique() <= 12 else 10)
-
-        st.form_submit_button('Submit')
+    with sidebar.expander('Graph Options'):
+        with st.form('numeric_opts'):
+            if feature_type == 'numeric':
+                bins = st.slider('Number of Bins', 1, min(100, panda[feature].nunique()), min(100, panda[feature].nunique()))
+            else:
+                bins = st.number_input('Top N Categories', min_value=2, max_value=panda[feature].nunique(),
+                                       value=panda[feature].nunique() if panda[feature].nunique() <= 12 else 10)
+    
+            st.form_submit_button('Submit')
 
     # Powerpoint Options
-    sidebar.subheader('PowerPoint Options')
-    with sidebar.form('powerpoint_opts'):
-        exclude_features = st.multiselect('Features to Exclude', panda.columns)
-        dl = st.form_submit_button('Download PowerPoint')
+    with sidebar.expander('PowerPoint Options'):
+        with st.form('powerpoint_opts'):
+            exclude_features = st.multiselect('Features to Exclude', panda.columns)
+            dl = st.form_submit_button('Download PowerPoint')
 
     #######################
     # PowerPoint Download #
