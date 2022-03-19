@@ -5,15 +5,18 @@ from sklearn.preprocessing import MinMaxScaler as mms
 from sklearn.linear_model import LinearRegression
 from matplotlib import pyplot as plt
 from pptx import Presentation, util
-from time import sleep
 import streamlit as st
+import seaborn as sea
 import pandas as pd
 import numpy as np
 import os
 
+sea.set(style='whitegrid', rc={'figure.dpi': 300})
+
 st.set_page_config(page_title='Data Explorer', layout='wide')
 st.set_option('deprecation.showPyplotGlobalUse', False)
 sidebar = st.sidebar
+
 
 #############
 # Functions #
@@ -126,6 +129,9 @@ if 'panda' not in st.session_state:
         st.session_state['panda'] = pd.read_csv(query, encoding='utf-8')
         st.experimental_rerun()
 
+####################
+# Data Exploration #
+####################
 else:
     panda = st.session_state['panda'].copy()
 
@@ -141,27 +147,37 @@ else:
         outliers = st.checkbox('Outlier Removal')
 
         st.form_submit_button('Submit')
-
-    feature_type = 'categorical' if pd.api.types.is_object_dtype(panda[feature]) else 'categorical' if panda[feature].nunique() == 2 else 'numeric' if pd.api.types.is_numeric_dtype(panda[feature]) else None
+        
+    target_type = (None if target == 'None' else 
+                   'categorical' if pd.api.types.is_object_dtype(panda[target]) else 'categorical' if panda[target].nunique() == 2 else 
+                   'numeric' if pd.api.types.is_numeric_dtype(panda[target]) 
+                   else None)
+    
+    feature_type = ('categorical' if pd.api.types.is_object_dtype(panda[feature]) else 'categorical' if panda[feature].nunique() == 2 else 
+                    'numeric' if pd.api.types.is_numeric_dtype(panda[feature]) 
+                    else None)
 
     # Partition Options
     if partition != 'None':
-        sidebar.subheader('Partition Options')
-        filter_type = 'categorical' if pd.api.types.is_object_dtype(panda[partition]) else 'categorical' if panda[partition].nunique() == 2 else 'numeric'
+        sidebar.subheader('Filter Options')
+        filter_type = 'categorical' if pd.api.types.is_object_dtype(panda[partition]) else 'numeric'
 
         with sidebar.form('filter_opts'):
             if filter_type == 'categorical':
-                filters = st.multiselect('Categories', list(panda[partition].dropna().unique()), list(panda[partition].dropna().unique()))
+                filters = st.multiselect('Categories', list(panda[partition].unique()), list(panda[partition].unique()))
 
             else:
-                left, right = st.columns(2)
-                equality = left.selectbox('>=<', ['>', '<', '='])
-                value = right.number_input('value')
+                min_value = st.number_input('Min', min_value=panda[partition].min(), max_value=panda[partition].max(), value=panda[partition].min())
+                max_value = st.number_input('Max', min_value=panda[partition].min(), max_value=panda[partition].max(), value=panda[partition].max())
 
             st.form_submit_button('Submit')
 
-        if filter_type == 'categorical' and filters != ['All']:
-            panda = panda.loc[panda[partition].astype(str).isin(filters)].copy()
+        if filter_type == 'categorical':
+            panda = panda.loc[panda[partition].isin(filters)].copy()
+        
+        else:
+            panda = panda.loc[(panda[partition] >= min_value) & (panda[partition] <= max_value)]
+              
 
     # Graph Options
     sidebar.subheader('Graph Options')
