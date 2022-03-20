@@ -18,7 +18,7 @@ sidebar = st.sidebar
 #############
 # Functions #
 #############
-def plot_feature(feature, panda, plot=True, fs=(16, 9), missing=False):
+def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
     if feature_type == 'numeric' and panda[feature].nunique() == bins:
         panda['grouping'] = panda[feature].copy()
         
@@ -65,7 +65,12 @@ def plot_feature(feature, panda, plot=True, fs=(16, 9), missing=False):
         
             lines.append(Line2D([0], [0], color=paly[i]))
         
-        plt.legend(lines, dvs)
+        if len(lines) > 1:
+            plt.legend(lines, dvs)
+        
+        title = f'Relationship between {feature} and {target}' if target != 'None' else f'Distribution of {feature}'
+        
+        plt.title(title)
         ax.set_ylabel(f'Average of {target}')
         
     return fig
@@ -103,7 +108,7 @@ else:
             st.form_submit_button('Submit')
         
     target_type = (None if target == 'None' else 
-                   'categorical' if pd.api.types.is_object_dtype(panda[target]) else 'categorical' if panda[target].nunique() == 2 else 
+                   'categorical' if pd.api.types.is_object_dtype(panda[target]) else 
                    'numeric' if pd.api.types.is_numeric_dtype(panda[target]) 
                    else None)
     
