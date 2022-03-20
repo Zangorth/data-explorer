@@ -1,17 +1,12 @@
 ###########
 # Imports #
 ###########
-from sklearn.preprocessing import MinMaxScaler as mms
-from sklearn.linear_model import LinearRegression
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
-from pptx import Presentation, util
-import matplotlib.ticker as ticker
 import streamlit as st
 import seaborn as sea
 import pandas as pd
 import numpy as np
-import os
 
 sea.set(style='white', rc={'figure.dpi': 300})
 
@@ -24,10 +19,8 @@ sidebar = st.sidebar
 # Functions #
 #############
 def plot_feature(feature, panda, plot=True, fs=(16, 9), missing=False):
-    st.write(feature_type)
     if feature_type == 'numeric' and panda[feature].nunique() == bins:
         panda['grouping'] = panda[feature].copy()
-        st.write(panda['grouping'].unique())
         
     elif feature_type == 'numeric':
         groups = np.histogram(panda.loc[panda[feature].notnull(), feature], bins=bins)
@@ -38,8 +31,6 @@ def plot_feature(feature, panda, plot=True, fs=(16, 9), missing=False):
         groups = panda.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
         panda['grouping'] = np.where(panda[feature].isin(groups[feature]), panda[feature], 'other')
     
-    st.write(bins)
-    st.write(panda['grouping'].nunique())
     fig, hist = plt.subplots(figsize=fs)
     sea.histplot(x='grouping', data=panda, stat='probability', bins=bins, 
                  ax=hist, alpha=1 if target == 'None' else 0.3, color='gray')
