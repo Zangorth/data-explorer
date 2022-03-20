@@ -4,14 +4,16 @@
 from sklearn.preprocessing import MinMaxScaler as mms
 from sklearn.linear_model import LinearRegression
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 from pptx import Presentation, util
+import matplotlib.ticker as ticker
 import streamlit as st
 import seaborn as sea
 import pandas as pd
 import numpy as np
 import os
 
-sea.set(style='whitegrid', rc={'figure.dpi': 300})
+sea.set(style='white', rc={'figure.dpi': 300})
 
 st.set_page_config(page_title='Data Explorer', layout='wide')
 st.set_option('deprecation.showPyplotGlobalUse', False)
@@ -21,101 +23,61 @@ sidebar = st.sidebar
 #############
 # Functions #
 #############
-def get_numeric(feature, panda, plot=True, fs=(16, 9), missing=False):
-    size = np.histogram(panda.loc[panda[feature].notnull(), feature], bins=bins)
-    height = size[0]
-    original_axis = size[1]
-    axis = [(original_axis[i] + original_axis[i+1])/2 for i in range(len(original_axis)-1)]
-    size = pd.DataFrame({'cuts': axis, 'size': height})
-
-    if plot:
-        fig, hist = plt.subplots(figsize=fs)
-        hist.bar(size['cuts'], size['size'], alpha=(0.4 if target != 'None' else 0.8), color='grey',
-                  width=((size.cuts.min() + size.cuts.max())/len(size))*0.2)
-        hist.set(yticklabels=[], ylabel=None)
-        hist.tick_params(left=False)
-
-    if target != 'None':
-        panda['grouping'] = np.nan
-        groups = 5
-
-        while panda['grouping'].nunique() < 2 and groups <= 50:
-            groups += 5
-            panda['grouping'] = pd.qcut(panda[feature], groups, duplicates='drop')
-
-        panda['grouping'] = [np.nan if pd.isnull(val) else val.mid for val in panda['grouping']]
-
-        means = panda.groupby('grouping')[target].mean().reset_index()
-
-        se = panda.groupby(['grouping'])[target].sem().reset_index()
-        se.columns = ['grouping', 'error']
-        se['error'] = 2 * se['error']
-
-        means = means.merge(se, on=['grouping'])
-
-        if plot:
-            ax = hist.twinx()
-            ax.plot('grouping', target, data=means, color='#148F77')
-            ax.errorbar('grouping', target, yerr='error', data=means, ls='', label='', color='black')
-            hist.set(yticklabels=[], ylabel=None)
-            hist.tick_params(left=False)
-            ax.yaxis.tick_left()
-            ax.set_ylabel(f'Average of {target}')
-            ax.yaxis.set_label_position('left')
-
-            missing = f'\nMissingness: {round((panda[feature].isnull().sum()/len(panda))*100, 1)}%' if missing else ''
-
-            title = f'Distribution of {feature}{missing}' if target == 'None' else f'Relationship between {target} and {feature}{missing}'
-            plt.title(title)
-
-            return fig
-
-        else:
-            return means
-
-def get_category(feature, panda, plot=True, fs=(16, 9), missing=False):
-    missing = f'\nMissingness: {round((panda[feature].isnull().sum()/len(panda))*100, 1)}%' if missing else ''
-    size = panda.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
-    panda['grouping'] = np.where(panda[feature].isin(size[feature]), panda[feature].astype(str).str.replace(' ', '').str.lower(), 'other')
-
-    size = panda.groupby('grouping').size().reset_index()
-    size.columns = ['grouping', 'size']
-    size['scaled'] = 0.8*((size['size'] - size['size'].min())/(size['size'].max() - size['size'].min())) + 0.2
-
-    if target == 'None' and plot:
-        fig, ax = plt.subplots(figsize=fs)
-        ax.bar(size['grouping'], size['size']/size['size'].sum(), color='#148F77')
-        ax.set_xticks(np.arange(size['grouping'].nunique()))
-        ax.set_xticklabels(size['grouping'], rotation=90)
-        plt.title(f'Distribution of {feature}{missing}')
-        plt.ylabel('Percent of Accounts')
-
-        return fig
-
+def plot_feature(feature, panda, plot=True, fs=(16, 9), missing=False):
+    st.write(feature_type)
+    if feature_type == 'numeric' and panda[feature].nunique() == bins:
+        panda['grouping'] = panda[feature].copy()
+        st.write(panda['grouping'].unique())
+        
+    elif feature_type == 'numeric':
+        groups = np.histogram(panda.loc[panda[feature].notnull(), feature], bins=bins)
+        panda['grouping'] = pd.cut(panda[feature], bins=groups[1])
+        panda['grouping'] = pd.IntervalIndex(panda['grouping']).right
+        
     else:
-        means = panda.groupby('grouping')[target].mean().reset_index()
-        se = panda.groupby(['grouping'])[target].sem().reset_index()
-        se.columns = ['grouping', 'error']
-        se['error'] = 2 * se['error']
-
-        means = means.merge(se, on=['grouping'])
-        means = means.merge(size, on='grouping')
-
-        if plot:
-            fig, ax = plt.subplots(figsize=fs)
-            for i in range(len(means)):
-                ax.bar(means['grouping'][i], means[target][i], alpha=means['scaled'][i], color='#148F77')
-
-            ax.errorbar('grouping', target, 'error', data=means, ls='', color='black')
-            ax.set_xticks(np.arange(size['grouping'].nunique()))
-            ax.set_xticklabels(size['grouping'], rotation=90)
-            plt.title(f'Relationship between {target} and {feature}{missing}')
-            plt.ylabel(f'Average of {target}')
-
-            return fig
-
+        groups = panda.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
+        panda['grouping'] = np.where(panda[feature].isin(groups[feature]), panda[feature], 'other')
+    
+    st.write(bins)
+    st.write(panda['grouping'].nunique())
+    fig, hist = plt.subplots(figsize=fs)
+    sea.histplot(x='grouping', data=panda, stat='probability', bins=bins, 
+                 ax=hist, alpha=1 if target == 'None' else 0.3, color='gray')
+    
+    plt.xticks(rotation=90)
+    plt.xlabel(feature)
+    hist.set_ylabel(f'Distribution of {feature} as Percent')
+    
+    if target != 'None':
+        if target_type == 'numeric':
+            means = panda.groupby('grouping')[target].agg(['mean', 'sem'])
+            dvs = [target]
+            means.columns = [f'{target} | mean', f'{target} | sem']
+            means = means.reset_index()
+        
         else:
-            return means
+            targets = pd.get_dummies(panda[target])
+            
+            means = targets.groupby(panda['grouping']).agg(['mean', 'sem'])
+            dvs = pd.Series(means.columns.get_level_values(0)).unique()
+            means.columns = [f'{means.columns.get_level_values(0)[i]} | {means.columns.get_level_values(1)[i]}' for i in range(means.shape[1])]
+            means = means.reset_index()
+            
+        ax = hist.twinx()
+        paly = sea.color_palette('Dark2_r', n_colors=len(dvs)).as_hex()
+        lines = []
+        for i in range(len(dvs)):
+            sea.scatterplot(x='grouping', y=f'{dvs[i]} | mean', data=means, color='black', ax=ax)
+            ax.errorbar(x='grouping', y=f'{dvs[i]} | mean', yerr=f'{dvs[i]} | sem', data=means, 
+                         ls='' if len(dvs) == 1 else '-', label=dvs[i], color=paly[i], alpha=0.6)
+            plt.ylabel('')
+        
+            lines.append(Line2D([0], [0], color=paly[i]))
+        
+        plt.legend(lines, dvs)
+        ax.set_ylabel(f'Average of {target}')
+        
+    return fig
 
 #############
 # Load Data #
@@ -184,28 +146,23 @@ else:
     with sidebar.expander('Graph Options'):
         with st.form('numeric_opts'):
             if feature_type == 'numeric':
-                bins = st.slider('Number of Bins', 1, min(100, panda[feature].nunique()), min(100, panda[feature].nunique()))
+                optimal_bins = int(np.ceil(np.log2(len(panda))) + 1)
+                bins = st.slider('Number of Bins', 1, min(100, panda[feature].nunique()), min(optimal_bins, panda[feature].nunique()))
             else:
                 bins = st.number_input('Top N Categories', min_value=2, max_value=panda[feature].nunique(),
                                        value=panda[feature].nunique() if panda[feature].nunique() <= 12 else 10)
-    
+            
+            bins = int(bins)
+            
             st.form_submit_button('Submit')
 
     #################
     # Display Plots #
     #################
     st.metric('Percent Missing', panda[feature].isnull().sum()/len(panda))
-
-    if feature_type == 'numeric':
-        if outliers:
-            panda = panda.loc[(panda[feature] >= panda[feature].mean() - 2*panda[feature].std()) &
-                              (panda[feature] <= panda[feature].mean() + 2*panda[feature].std())]
-
-        fig = get_numeric(feature, panda)
-
-    elif feature_type == 'categorical':
-        fig = get_category(feature, panda)
-
+    
+    fig = plot_feature(feature, panda)
+    
     st.pyplot(fig)
 
 
