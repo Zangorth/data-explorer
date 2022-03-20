@@ -31,15 +31,25 @@ def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
         groups = panda.groupby(feature).size().sort_values(ascending=False).reset_index()[0:bins]
         panda['grouping'] = np.where(panda[feature].isin(groups[feature]), panda[feature], 'other')
     
-    fig, hist = plt.subplots(figsize=fs)
-    sea.histplot(x='grouping', data=panda, stat='probability', bins=bins, 
-                 ax=hist, alpha=1 if target == 'None' else 0.3, color='gray')
+    if target == 'None':
+        fig, hist = plt.subplots(figsize=fs)
+        sea.histplot(x='grouping', data=panda, stat='probability', bins=bins, 
+                     ax=hist, alpha=1 if target == 'None' else 0.3, color='gray')
+        
+        plt.xticks(rotation=90)
+        plt.xlabel(feature)
+        hist.set_ylabel(f'Distribution of {feature} as Percent')
     
-    plt.xticks(rotation=90)
-    plt.xlabel(feature)
-    hist.set_ylabel(f'Distribution of {feature} as Percent')
-    
-    if target != 'None':
+    else:
+        fig, ax = plt.subplots(figsize=fs)
+        hist = ax.twinx()
+        sea.histplot(x='grouping', data=panda, stat='probability', bins=bins, 
+                     ax=hist, alpha=1 if target == 'None' else 0.3, color='gray')
+        
+        plt.xticks(rotation=90)
+        plt.xlabel(feature)
+        hist.set_ylabel(f'Distribution of {feature} as Percent')
+        
         if target_type == 'numeric':
             means = panda.groupby('grouping')[target].agg(['mean', 'sem'])
             dvs = [target]
@@ -54,19 +64,18 @@ def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
             means.columns = [f'{means.columns.get_level_values(0)[i]} | {means.columns.get_level_values(1)[i]}' for i in range(means.shape[1])]
             means = means.reset_index()
             
-        ax = hist.twinx()
         paly = sea.color_palette('Dark2_r', n_colors=len(dvs)).as_hex()
         lines = []
         for i in range(len(dvs)):
             sea.scatterplot(x='grouping', y=f'{dvs[i]} | mean', data=means, color='black', ax=ax)
             ax.errorbar(x='grouping', y=f'{dvs[i]} | mean', yerr=f'{dvs[i]} | sem', data=means, 
-                         ls='' if len(dvs) == 1 else '-', label=dvs[i], color=paly[i], alpha=0.6)
-            plt.ylabel('')
+                         ls='' if len(dvs) == 1 else '-', label='', color=paly[i], alpha=0.6)
+            ax.set_ylabel('')
         
             lines.append(Line2D([0], [0], color=paly[i]))
         
         if len(lines) > 1:
-            plt.legend(lines, dvs)
+            plt.legend(lines, dvs, loc='best')
         
         title = f'Relationship between {feature} and {target}' if target != 'None' else f'Distribution of {feature}'
         
