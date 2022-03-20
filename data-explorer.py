@@ -39,6 +39,7 @@ def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
         plt.xticks(rotation=90)
         plt.xlabel(feature)
         hist.set_ylabel(f'Distribution of {feature} as Percent')
+        hist.set_title(f'Distribution of {feature}')
     
     else:
         fig, ax = plt.subplots(figsize=fs)
@@ -77,9 +78,7 @@ def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
         if len(lines) > 1:
             plt.legend(lines, dvs, loc='best')
         
-        title = f'Relationship between {feature} and {target}' if target != 'None' else f'Distribution of {feature}'
-        
-        plt.title(title)
+        hist.set_title(f'Relationship between {feature} and {target}')
         ax.set_ylabel(f'Average of {target}')
         
     return fig
