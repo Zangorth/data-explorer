@@ -37,7 +37,7 @@ def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
                      ax=hist, alpha=1 if target == 'None' else 0.3, color='gray')
         
         plt.xticks(rotation=90)
-        plt.xlabel(feature)
+        hist.set_xlabel(feature)
         hist.set_ylabel(f'Distribution of {feature} as Percent')
         hist.set_title(f'Distribution of {feature}')
     
@@ -48,7 +48,6 @@ def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
                      ax=hist, alpha=1 if target == 'None' else 0.3, color='gray')
         
         plt.xticks(rotation=90)
-        plt.xlabel(feature)
         hist.set_ylabel(f'Distribution of {feature} as Percent')
         
         if target_type == 'numeric':
@@ -72,6 +71,7 @@ def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
             ax.errorbar(x='grouping', y=f'{dvs[i]} | mean', yerr=f'{dvs[i]} | sem', data=means, 
                          ls='' if len(dvs) == 1 else '-', label='', color=paly[i], alpha=0.6)
             ax.set_ylabel('')
+            ax.set_xlabel('')
         
             lines.append(Line2D([0], [0], color=paly[i]))
         
@@ -80,6 +80,7 @@ def plot_feature(feature, panda, plot=True, fs=(14, 7), missing=False):
         
         hist.set_title(f'Relationship between {feature} and {target}')
         ax.set_ylabel(f'Average of {target}')
+        ax.set_xlabel(feature)
         
     return fig
 
